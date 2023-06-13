@@ -14,7 +14,7 @@ knitr::opts_chunk$set(echo = TRUE, cache = F, tidy = T,
 ```{r}
 # set working directory
 # ---------------------
-setwd("D:/Ph.D_materials/Programming/R_programming/mdsr/Book_recommend")
+setwd("D:/Ph.D_materials/Programming/R_programming/mdsr/Books-recommendation-systems")
 ```
 
 
@@ -23,8 +23,9 @@ setwd("D:/Ph.D_materials/Programming/R_programming/mdsr/Book_recommend")
 # ---------------------------
 source("book_pkg.R")
 ```
+
 ```{r}
-# parallelized computing
+# parallel computing
 # ----------------------
 cl = makePSOCKcluster(5)
 registerDoParallel(cl)
@@ -239,110 +240,71 @@ recomendar = function(selected_books, dissimilarity_matrix,
 }
 
 recomendaciones = recomendar(selected_books, dissimilarity, books)
-dd <-recomendaciones[ , c(1,12)]
+datatable(recomendaciones, options = list(scrollX = TRUE))
 ```
 
 
 ```{r}
-# Create a directory to save the images
-dir <- "image_directory"
-dir.create(dir, showWarnings = FALSE)
-
-# Data with URLs
-data <- read.table(text = "recommended_book	Image.URL.M
-ISBN.0060929596	http://images.amazon.com/images/P/0060929596.01.MZZZZZZZ.jpg
-ISBN.0373834985	http://images.amazon.com/images/P/0373834985.01.MZZZZZZZ.jpg
-ISBN.038533656X	http://images.amazon.com/images/P/038533656X.01.MZZZZZZZ.jpg
-ISBN.0440217520	http://images.amazon.com/images/P/0440217520.01.MZZZZZZZ.jpg
-ISBN.0679450548	http://images.amazon.com/images/P/0679450548.01.MZZZZZZZ.jpg
-ISBN.0743230213	http://images.amazon.com/images/P/0743230213.01.MZZZZZZZ.jpg
-ISBN.0802135196	http://images.amazon.com/images/P/0802135196.01.MZZZZZZZ.jpg",
-                   header = TRUE, 
-stringsAsFactors = FALSE)
-
-
-# For loop to download image
-for (i in 1:nrow(data)) {
-  url <- data[i, "Image.URL.M"]
-  filename <- paste0(dir, "/", basename(url))
-  download.file(url, filename, mode = "wb")
-  cat("Downloaded image", i, "out of", nrow(data), "\n")
-}
-
-# Confirm the number of downloaded images
-num_images <- length(list.files(dir))
-cat("Downloaded", num_images, "images.\n")
-
-```
-
-
-
-
-```{r}
-
-  dir.create("content_recommended_images")
-  for(i in 1:n_books){
-    
-    # Create dir & Download the images
-    img = pull(recomendation[i, colnames(recomendation) == image])
-    name = paste0("content_recommended_images/",i,".jpg")
-    suppressMessages(
-      download.file(as.character(img), destfile = name ,mode = "wb") 
-    )
+# # Create a directory to save the images
+# dir <- "image_directory"
+# dir.create(dir, showWarnings = FALSE)
+# 
+# # Data with URLs
+# data <- read.table(text = "recommended_book	Image.URL.M
+# ISBN.0060929596	http://images.amazon.com/images/P/0060929596.01.MZZZZZZZ.jpg
+# ISBN.0373834985	http://images.amazon.com/images/P/0373834985.01.MZZZZZZZ.jpg
+# ISBN.038533656X	http://images.amazon.com/images/P/038533656X.01.MZZZZZZZ.jpg
+# ISBN.0440217520	http://images.amazon.com/images/P/0440217520.01.MZZZZZZZ.jpg
+# ISBN.0679450548	http://images.amazon.com/images/P/0679450548.01.MZZZZZZZ.jpg
+# ISBN.0743230213	http://images.amazon.com/images/P/0743230213.01.MZZZZZZZ.jpg
+# ISBN.0802135196	http://images.amazon.com/images/P/0802135196.01.MZZZZZZZ.jpg",
+#                    header = TRUE, 
+# stringsAsFactors = FALSE)
+# 
+# 
+# # For loop to download image
+# for (i in 1:nrow(data)) {
+#   url <- data[i, "Image.URL.M"]
+#   filename <- paste0(dir, "/", basename(url))
+#   download.file(url, filename, mode = "wb")
+#   cat("Downloaded image", i, "out of", nrow(data), "\n")
+# }
+# 
+# # Confirm the number of downloaded images
+# num_images <- length(list.files(dir))
+# cat("Downloaded", num_images, "images.\n")
 
 ```
 
 
 ```{r}
-visualizar_recomendacion = function(recomendation,
-                                     recommended_book, image, n_books = 5){
-
-  if(n_books > nrow(recomendation)) {n_books = nrow(recomendation)}
-
-  plot = list()
-
-  if (!dir.exists("content_recommended_images")) {
-    dir.create("content_recommended_images")
-  }
-
-  for(i in 1:n_books){
-    # Create dir & Download the images
-    img = pull(recomendation[i, colnames(recomendation) == image])
-    name = paste0("content_recommended_images/",i,".jpg")
-    suppressMessages(
-      download.file(as.character(img), destfile = name ,mode = "w") 
-    )
-
-    download.file()
-    # Assign Objetc
-    plot[[i]] = rasterGrob(readJPEG(name))
-  }
-
-  do.call(marrangeGrob, args = list(plot, ncol = n_books, nrow = 1, top=""))
-}
-
-visualizar_recomendacion(recomendaciones, "recommended_book", "Image.URL.M")
-```
-
-```{r}
-# Sample data
-recommended_book <- c("ISBN.0060929596", "ISBN.0373834985", "ISBN.038533656X", "ISBN.0440217520", "ISBN.0679450548", "ISBN.0743230213", "ISBN.0802135196")
-
-read_book <- "ISBN.0743230213"
-
-# Initialize an empty vector to store assigned recommended books
-assigned_books <- c( )
-
-# Iterate over each recommended book
-for (book in recommended_book) {
-  # Check if the recommended book matches the read book
-  if (book == read_book) {
-    # Add the recommended book to the assigned books vector
-    assigned_books <- c(assigned_books, book)
-  }
-}
-
-# Print the assigned recommended books
-print(assigned_books)
+# visualizar_recomendacion = function(recomendation,
+#                                      recommended_book, image, n_books = 5){
+# 
+#   if(n_books > nrow(recomendation)) {n_books = nrow(recomendation)}
+# 
+#   plot = list()
+# 
+#   if (!dir.exists("content_recommended_images")) {
+#     dir.create("content_recommended_images")
+#   }
+# 
+#   for(i in 1:n_books){
+#     # Create dir & Download the images
+#     img = pull(recomendation[i, colnames(recomendation) == image])
+#     name = paste0("content_recommended_images/",i,".jpg")
+#     suppressMessages(
+#       download.file(as.character(img), destfile = name ,mode = "w") 
+#     )
+# 
+#     download.file()
+#     # Assign Objetc
+#     plot[[i]] = rasterGrob(readJPEG(name))
+#   }
+# 
+#   do.call(marrangeGrob, args = list(plot, ncol = n_books, nrow = 1, top=""))
+# }
+# 
+# visualizar_recomendacion(recomendaciones, "recommended_book", "Image.URL.M")
 ```
 
