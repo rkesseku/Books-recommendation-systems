@@ -1,0 +1,348 @@
+---
+title: "Recommendation system for Books"
+author: "Reagan Kesseku"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+# set global chunk options
+# -------------------------
+knitr::opts_chunk$set(echo = TRUE, cache = F, tidy = T,
+                      warning = F, message = F, options(digits = 3))
+```
+
+```{r}
+# set working directory
+# ---------------------
+setwd("D:/Ph.D_materials/Programming/R_programming/mdsr/Book_recommend")
+```
+
+
+```{r}
+# Load functions and packages
+# ---------------------------
+source("book_pkg.R")
+```
+```{r}
+# parallelized computing
+# ----------------------
+cl = makePSOCKcluster(5)
+registerDoParallel(cl)
+```
+
+#### Creating Books Recommendation System using Machine Learning algorithm in R
+```{r}
+# Import the datasets  
+# -------------------
+books <- read.csv("BX-Books.csv", header =  T, sep = ";")
+users <- read.csv("BX-users.csv", header =  T, sep = ";")
+ratings <- read.csv("BX-Book-Ratings.csv", header =  T, sep = ";")
+```
+
+
+```{r}
+# Take a sample look at the book dataset
+# --------------------------------------
+books %>% sample_n(7) %>% datatable(options = list(scrollX = TRUE))
+```
+
+For the books dataset, there are `r dim(books)[1]` observations and `r dim(books)[2]` variables in the movies data. While the top five (5) column names (ISBN, Book title, Author, Year of publication, publisher) are clear book text or numeric data, the remaining 3 are images.
+
+
+#### Anyway, in order to generate more realistic data, we will include a new variable called ‘Category’. This variable will indicate if the book belongs to any of the following categories:
+
+Action and Adventure.
+Classic.
+Detective and Mystery.
+Fantasy.
+
+```{r}
+set.seed(123)
+categories = c("Action and Adventure", "Classic",
+               "Detective and Mystery", "Fantasy")
+
+books <- books %>% 
+  mutate(category = sample(categories, n(), replace = TRUE, 
+                           prob = c(0.25, 0.3, 0.25, 0.20)) %>% 
+                    as.factor())
+
+rm(categories)
+```
+
+```{r}
+books <- books %>%
+  mutate(ISBN = paste0("ISBN.", ISBN))
+users <- users %>%
+  mutate(User.ID = paste0("User.", User.ID))
+ratings <- ratings %>%
+  mutate(ISBN = paste0("ISBN.", ISBN),
+         User.ID = paste0("User.", User.ID))
+
+books %>% sample_n(2) %>% datatable(options = list(scrollX = TRUE))
+```
+
+Exploring the rating data
+On the other hand, we will see how the ratings of the books are distributed. 
+This is very important for the collaborative recommendation systems that we will build with R.
+
+library(ggplot2)
+
+```{r}
+ratings %>%
+  group_by(Book.Rating) %>%
+  summarize(cases = n()) %>%
+  mutate(percentage = cases / sum(cases) * 100) %>%
+  ggplot(aes(Book.Rating, cases, fill = factor(Book.Rating))) + 
+  geom_col() +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            position = position_stack(vjust = 0.5), 
+            color = "black", size = 2.5) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_bw() + 
+  labs(x= "Book ratings", y = "Counts", fill = "Book ratings",
+       title = "Distribution of book ratings for users") +
+  scale_x_continuous(breaks = 0:10)
+
+```
+
+It is apparent that there are several zeros. 
+This is not surprising as most people read books without rating them.
+Thus, we will filter the complete ratings cases.
+
+```{r}
+# filter non zero ratings
+# ------------------------
+ratings <- ratings %>% filter(Book.Rating != 0)
+
+ratings %>% dim()   # new dimension
+```
+```{r}
+# Resulting distribution after filtering
+# --------------------------------------
+ratings %>%
+  group_by(Book.Rating) %>%
+  summarize(cases = n()) %>%
+  mutate(percentage = cases / sum(cases) * 100) %>%
+  ggplot(aes(Book.Rating, cases, fill = factor(Book.Rating))) + 
+  geom_col() +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            position = position_stack(vjust = 0.5), 
+            color = "black", size = 2.5) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_bw() + 
+  labs(x= "Book ratings", y = "Counts", fill = "Book ratings",
+       title = "Distribution of book ratings for users") +
+  scale_x_continuous(breaks = 0:10)
+```
+The change in percentages as displayed is a result of the total sample changing
+after filtering the complete cases.
+
+Finally, let’s see how much each person scores:
+
+```{r}
+# Users score
+users_rate <- ratings %>%
+  group_by(User.ID) %>% count() 
+
+# provide summary measures
+favstats(~ n, data = users_rate)
+```
+
+As we can see, 75% of users have given 3 recommendations or less. We are going to remove these people to keep only more significant users and, thus, reduce computing needs:
+
+```{r}
+user_index <- users_rate %>% filter(n > 4) %>% pull(User.ID)
+
+users <- users %>%
+         filter(User.ID %in% user_index)
+ratings <- ratings %>%
+         filter(User.ID %in% user_index)
+books <- books %>%
+         filter(ISBN %in% ratings$ISBN)
+```
+
+
+#### Content based Recommendation system
+
+```{r}
+# parallelized computing
+# ----------------------
+# cl = makePSOCKcluster(5)
+# registerDoParallel(cl)
+
+# Taking a subset of the data
+book_feature <- books %>% 
+  select(Book.Author, Publisher, category) %>% 
+  slice(1:10000)
+
+# convert to factors
+book_feature <- book_feature %>% mutate(
+  across(c(1, 2, 3), as.factor))
+
+dissimilarity <- book_feature %>%
+daisy(metric = "gower", weights = c(2, 0.5, 1)) %>%
+as.matrix() 
+
+row.names(dissimilarity)<-  books$ISBN[1:10000]
+colnames(dissimilarity)<- books$ISBN[1:10000]
+
+datatable(dissimilarity[15:20, 15:20])
+```
+Anyway, we are going to choose a user and keep the books they have read. We will apply the algorithm on these books:
+
+
+```{r}
+user_id = "User.1167"
+
+user_books = ratings %>%
+  filter(User.ID == user_id & ISBN %in% books$ISBN[1:10000]) %>%
+  arrange(desc(Book.Rating))
+
+head(user_books,10)
+```
+
+As we can see, the user has given 6 recommendations giving scores of 10, 9, 8, 7 and 5 points. Using the recommendations is something important, since it allows us to weigh the recommendations we give: we will prioritize a book similar to the one that has scored a 10 over one that has scored a 5. In addition, we will stop recommending those books that are similar to the which has scored a 0.
+
+
+```{r}
+books$ISBN = as.character(books$ISBN)
+selected_books = user_books[ ,c("ISBN", "Book.Rating")]
+
+recomendar = function(selected_books, dissimilarity_matrix,
+                      books, n_recommendations = 5){
+
+  selected_book_indexes = which(colnames(dissimilarity_matrix) %in% selected_books$ISBN)
+
+
+  results = data.frame(dissimilarity_matrix[, selected_book_indexes],
+                       recommended_book = row.names(dissimilarity_matrix),
+                       stringsAsFactors = FALSE)
+
+
+  recomendaciones = results %>%
+    pivot_longer(cols = c(-"recommended_book") , names_to = "read_book",
+                 values_to = "dissimilarity") %>%
+      left_join(selected_books, by = c("recommended_book" = "ISBN"))%>%
+    arrange(desc(dissimilarity)) %>%
+    filter(recommended_book != read_book) %>%
+    filter(!is.na(Book.Rating) ) %>%
+    mutate(
+      similarity = 1 - dissimilarity,
+      weighted_score = similarity * Book.Rating) %>%
+    arrange(desc(weighted_score)) %>%
+    filter(weighted_score>0) %>%
+    group_by(recommended_book) %>% slice(1) %>%
+    top_n(n_recommendations, weighted_score)  %>%
+    left_join(books, by = c("recommended_book" = "ISBN"))
+
+  return(recomendaciones)
+}
+
+recomendaciones = recomendar(selected_books, dissimilarity, books)
+dd <-recomendaciones[ , c(1,12)]
+```
+
+
+```{r}
+# Create a directory to save the images
+dir <- "image_directory"
+dir.create(dir, showWarnings = FALSE)
+
+# Data with URLs
+data <- read.table(text = "recommended_book	Image.URL.M
+ISBN.0060929596	http://images.amazon.com/images/P/0060929596.01.MZZZZZZZ.jpg
+ISBN.0373834985	http://images.amazon.com/images/P/0373834985.01.MZZZZZZZ.jpg
+ISBN.038533656X	http://images.amazon.com/images/P/038533656X.01.MZZZZZZZ.jpg
+ISBN.0440217520	http://images.amazon.com/images/P/0440217520.01.MZZZZZZZ.jpg
+ISBN.0679450548	http://images.amazon.com/images/P/0679450548.01.MZZZZZZZ.jpg
+ISBN.0743230213	http://images.amazon.com/images/P/0743230213.01.MZZZZZZZ.jpg
+ISBN.0802135196	http://images.amazon.com/images/P/0802135196.01.MZZZZZZZ.jpg",
+                   header = TRUE, 
+stringsAsFactors = FALSE)
+
+
+# For loop to download image
+for (i in 1:nrow(data)) {
+  url <- data[i, "Image.URL.M"]
+  filename <- paste0(dir, "/", basename(url))
+  download.file(url, filename, mode = "wb")
+  cat("Downloaded image", i, "out of", nrow(data), "\n")
+}
+
+# Confirm the number of downloaded images
+num_images <- length(list.files(dir))
+cat("Downloaded", num_images, "images.\n")
+
+```
+
+
+
+
+```{r}
+
+  dir.create("content_recommended_images")
+  for(i in 1:n_books){
+    
+    # Create dir & Download the images
+    img = pull(recomendation[i, colnames(recomendation) == image])
+    name = paste0("content_recommended_images/",i,".jpg")
+    suppressMessages(
+      download.file(as.character(img), destfile = name ,mode = "wb") 
+    )
+
+```
+
+
+```{r}
+visualizar_recomendacion = function(recomendation,
+                                     recommended_book, image, n_books = 5){
+
+  if(n_books > nrow(recomendation)) {n_books = nrow(recomendation)}
+
+  plot = list()
+
+  if (!dir.exists("content_recommended_images")) {
+    dir.create("content_recommended_images")
+  }
+
+  for(i in 1:n_books){
+    # Create dir & Download the images
+    img = pull(recomendation[i, colnames(recomendation) == image])
+    name = paste0("content_recommended_images/",i,".jpg")
+    suppressMessages(
+      download.file(as.character(img), destfile = name ,mode = "w") 
+    )
+
+    download.file()
+    # Assign Objetc
+    plot[[i]] = rasterGrob(readJPEG(name))
+  }
+
+  do.call(marrangeGrob, args = list(plot, ncol = n_books, nrow = 1, top=""))
+}
+
+visualizar_recomendacion(recomendaciones, "recommended_book", "Image.URL.M")
+```
+
+```{r}
+# Sample data
+recommended_book <- c("ISBN.0060929596", "ISBN.0373834985", "ISBN.038533656X", "ISBN.0440217520", "ISBN.0679450548", "ISBN.0743230213", "ISBN.0802135196")
+
+read_book <- "ISBN.0743230213"
+
+# Initialize an empty vector to store assigned recommended books
+assigned_books <- c( )
+
+# Iterate over each recommended book
+for (book in recommended_book) {
+  # Check if the recommended book matches the read book
+  if (book == read_book) {
+    # Add the recommended book to the assigned books vector
+    assigned_books <- c(assigned_books, book)
+  }
+}
+
+# Print the assigned recommended books
+print(assigned_books)
+```
+
